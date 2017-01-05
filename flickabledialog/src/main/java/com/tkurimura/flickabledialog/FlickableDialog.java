@@ -565,7 +565,6 @@ public class FlickableDialog extends DialogFragment {
       }
     });
 
-    dialog.getWindow().getAttributes().windowAnimations = R.style.FlickableDialogAnimation;
     return dialog;
   }
 
