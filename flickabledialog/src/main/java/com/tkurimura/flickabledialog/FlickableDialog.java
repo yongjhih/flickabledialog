@@ -2,38 +2,29 @@ package com.tkurimura.flickabledialog;
 
 import android.animation.ObjectAnimator;
 import android.animation.PropertyValuesHolder;
-
 import android.app.Dialog;
-import android.content.Context;
 import android.content.DialogInterface;
-
 import android.graphics.Color;
 import android.os.Bundle;
 import android.support.annotation.ColorRes;
 import android.support.annotation.LayoutRes;
 import android.support.annotation.NonNull;
-
+import android.support.annotation.Nullable;
 import android.support.v4.app.DialogFragment;
 import android.support.v4.content.ContextCompat;
-
 import android.util.Pair;
-
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
-
 import android.view.ViewGroup;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.FrameLayout;
-
-import org.reactivestreams.Subscriber;
 
 import java.util.concurrent.TimeUnit;
 
 import io.reactivex.Observable;
 import io.reactivex.ObservableEmitter;
 import io.reactivex.ObservableOnSubscribe;
-import io.reactivex.Observer;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.disposables.Disposable;
 import io.reactivex.functions.BiFunction;
@@ -61,7 +52,6 @@ public class FlickableDialog extends DialogFragment {
   private Integer defaultTop;
   private boolean cancelAndDismissTaken = true;
   private boolean cancelable = false;
-  private FlickableDialogListener flickableDialogListeners;
 
   public static FlickableDialog newInstance(@LayoutRes int layoutResources) {
 
@@ -119,11 +109,6 @@ public class FlickableDialog extends DialogFragment {
    */
   public void onOriginBack() {}
 
-  @Override public void onAttach(Context context) {
-    super.onAttach(context);
-    flickableDialogListeners = new FlickableDialogListener(this);
-  }
-
   @NonNull @Override public Dialog onCreateDialog(Bundle savedInstanceState) {
     super.onCreateDialog(savedInstanceState);
 
@@ -174,9 +159,8 @@ public class FlickableDialog extends DialogFragment {
     }).doOnNext(new Consumer<Object>() {
       @Override public void accept(Object o) {
 
-        FlickableDialogListener.OnCanceled canceledListener = flickableDialogListeners.getOnFlickableDialogCanceledListener();
-        if(canceledListener != null){
-          canceledListener.onFlickableDialogCanceled();
+        if(onFlickableDialogCanceled != null){
+          onFlickableDialogCanceled.onFlickableDialogCanceled();
         }
       }
     }).subscribe(new Consumer<Object>() {
@@ -514,13 +498,10 @@ public class FlickableDialog extends DialogFragment {
                 .doOnNext(new Consumer<Pair<Integer, Integer>>() {
                   // call back X direction
                   @Override public void accept(Pair<Integer, Integer> integerIntegerPair) {
-                    FlickableDialogListener.OnFlickedXDirection onFlickedXDirectionListener =
-                        flickableDialogListeners.getOnFlickedXDirectionListener();
                     if (onFlickedXDirectionListener != null) {
                       if (integerIntegerPair.first > 0) {
                         if (integerIntegerPair.second < 0) {
-                          onFlickedXDirectionListener.onFlickableDialogFlicked(
-                              FlickableDialogListener.X_DIRECTION.LEFT_BOTTOM);
+                          onFlickedXDirectionListener.onFlickableDialogFlicked(FlickableDialogListener.X_DIRECTION.LEFT_BOTTOM);
                         } else {
                           onFlickedXDirectionListener.onFlickableDialogFlicked(
                               FlickableDialogListener.X_DIRECTION.LEFT_TOP);
@@ -564,14 +545,26 @@ public class FlickableDialog extends DialogFragment {
     dialog.setOnCancelListener(new Dialog.OnCancelListener() {
       @Override public void onCancel(DialogInterface dialog) {
 
-        FlickableDialogListener.OnCanceled canceledListener = flickableDialogListeners.getOnFlickableDialogCanceledListener();
-        if(canceledListener != null){
-          canceledListener.onFlickableDialogCanceled();
+        if(onFlickableDialogCanceled != null){
+          onFlickableDialogCanceled.onFlickableDialogCanceled();
         }
       }
     });
 
     return dialog;
+  }
+
+
+  @Nullable private FlickableDialogListener.OnFlickedXDirection onFlickedXDirectionListener;
+
+  @Nullable private FlickableDialogListener.OnCanceled onFlickableDialogCanceled;
+
+  public void setOnFlick(FlickableDialogListener.OnFlickedXDirection onFlickedXDirectionListener) {
+    this.onFlickedXDirectionListener = onFlickedXDirectionListener;
+  }
+
+  public void setOnCancel(FlickableDialogListener.OnCanceled onFlickableDialogCanceled) {
+    this.onFlickableDialogCanceled = onFlickableDialogCanceled;
   }
 
   public void setCanceledOnTouchOutside(boolean cancel) {
@@ -586,7 +579,8 @@ public class FlickableDialog extends DialogFragment {
 
     compositeSubscription.dispose();
 
-    flickableDialogListeners.destroyListeners();
+    onFlickedXDirectionListener = null;
+    onFlickableDialogCanceled = null;
 
     super.onDetach();
   }
@@ -595,7 +589,8 @@ public class FlickableDialog extends DialogFragment {
 
     compositeSubscription.dispose();
 
-    flickableDialogListeners.destroyListeners();
+    onFlickedXDirectionListener = null;
+    onFlickableDialogCanceled = null;
 
     super.onDismiss(dialogInterface);
   }

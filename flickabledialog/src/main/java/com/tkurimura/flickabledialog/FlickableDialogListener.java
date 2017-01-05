@@ -1,33 +1,12 @@
 package com.tkurimura.flickabledialog;
 
-import android.support.annotation.Nullable;
-
 public class FlickableDialogListener {
 
-  public FlickableDialogListener(FlickableDialog flickableDialog) {
-
-    Object anyListener = flickableDialog.getParentFragment();
-    if (anyListener == null) {
-      anyListener = flickableDialog.getParentFragment();
-      if (anyListener == null) {
-        throw new IllegalStateException(
-            "You may implement getSupportFragmentManager() into  FlickableDialog#show argument in Fragment . If you call FlickableDialog in Fragment, you have to use getChildFragmentManager instead of getSupportFragmentManager");
-      }
-    }
-    if (anyListener instanceof OnFlickedXDirection) {
-      onFlickedXDirectionListener = (OnFlickedXDirection) anyListener;
-    }
-    if (anyListener instanceof OnCanceled) {
-      onFlickableDialogCanceled = (OnCanceled) anyListener;
-    }
-  }
-
-  public enum X_DIRECTION {
-
-    LEFT_TOP,
-    RIGHT_TOP,
-    RIGHT_BOTTOM,
-    LEFT_BOTTOM
+  public static class X_DIRECTION {
+    public static int LEFT_TOP = 0;
+    public static int RIGHT_TOP = 1;
+    public static int RIGHT_BOTTOM = 2;
+    public static int LEFT_BOTTOM = 3;
   }
 
   public interface OnFlickedXDirection {
@@ -37,7 +16,7 @@ public class FlickableDialogListener {
      * @param xDirection LEFT_TOP,RIGHT_TOP,RIGHT_BOTTOM,LEFT_BOTTOM
      * @version 0.3.0
      */
-    void onFlickableDialogFlicked(X_DIRECTION xDirection);
+    void onFlickableDialogFlicked(int xDirection);
   }
 
   public interface OnCanceled {
@@ -47,22 +26,5 @@ public class FlickableDialogListener {
      * @version 0.4.0
      */
     void onFlickableDialogCanceled();
-  }
-
-  @Nullable private OnFlickedXDirection onFlickedXDirectionListener;
-
-  @Nullable private OnCanceled onFlickableDialogCanceled;
-
-  @Nullable OnFlickedXDirection getOnFlickedXDirectionListener() {
-    return onFlickedXDirectionListener;
-  }
-
-  @Nullable OnCanceled getOnFlickableDialogCanceledListener() {
-    return onFlickableDialogCanceled;
-  }
-
-  void destroyListeners() {
-    onFlickableDialogCanceled = null;
-    onFlickedXDirectionListener = null;
   }
 }

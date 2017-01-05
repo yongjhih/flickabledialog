@@ -1,1 +1,2 @@
-include ':app', ':flickabledialog'
+include ':flickabledialog'
+//include ':app'
