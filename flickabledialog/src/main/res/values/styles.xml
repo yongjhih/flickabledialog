@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="FlickableDialog" parent="@android:style/Theme.Dialog">
+        <item name="android:windowAnimationStyle">@style/FlickableDialogAnimation</item>
+    </style>
+
+    <style name="FlickableDialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/slide_in_top</item>
+        <item name="android:windowExitAnimation">@anim/slide_out_bottom</item>
+    </style>
+</resources>

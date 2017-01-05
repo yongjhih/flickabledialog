@@ -20,6 +20,8 @@ import android.view.ViewGroup;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.FrameLayout;
 
+import com.flickabledialog.R;
+
 import java.util.concurrent.TimeUnit;
 
 import io.reactivex.Observable;
@@ -563,6 +565,7 @@ public class FlickableDialog extends DialogFragment {
       }
     });
 
+    dialog.getWindow().getAttributes().windowAnimations = R.style.FlickableDialogAnimation;
     return dialog;
   }
 
