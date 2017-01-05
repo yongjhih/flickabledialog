@@ -25,16 +25,24 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.FrameLayout;
+
+import org.reactivestreams.Subscriber;
+
 import java.util.concurrent.TimeUnit;
-import rx.Observable;
-import rx.Subscriber;
-import rx.android.schedulers.AndroidSchedulers;
-import rx.functions.Action0;
-import rx.functions.Action1;
-import rx.functions.Func1;
-import rx.functions.Func2;
-import rx.functions.Func3;
-import rx.subscriptions.CompositeSubscription;
+
+import io.reactivex.Observable;
+import io.reactivex.ObservableEmitter;
+import io.reactivex.ObservableOnSubscribe;
+import io.reactivex.Observer;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.BiFunction;
+import io.reactivex.functions.Consumer;
+import io.reactivex.functions.Function;
+import io.reactivex.functions.Function3;
+import io.reactivex.functions.Predicate;
+
+import static io.reactivex.android.schedulers.AndroidSchedulers.mainThread;
 
 public class FlickableDialog extends DialogFragment {
 
@@ -46,7 +54,7 @@ public class FlickableDialog extends DialogFragment {
 
   private float DISMISS_THRESHOLD = 700f;
   private float ROTATE_ANIMATION_EXPONENT = 30f;
-  private CompositeSubscription compositeSubscription = new CompositeSubscription();
+  private CompositeDisposable compositeSubscription = new CompositeDisposable();
   private int previousX;
   private int previousY;
   private Integer defaultLeft;
@@ -135,59 +143,50 @@ public class FlickableDialog extends DialogFragment {
       frameLayout.setBackgroundColor(Color.argb(100, 0, 0, 0));
     }
 
-    compositeSubscription.add(Observable.create(new Observable.OnSubscribe<View>() {
-      @Override public void call(final Subscriber<? super View> subscriber) {
+    compositeSubscription.add(Observable.create(new ObservableOnSubscribe<View>() {
+      @Override public void subscribe(final ObservableEmitter<View> subscriber) {
         frameLayout.setOnClickListener(new View.OnClickListener() {
           @Override public void onClick(View v) {
             subscriber.onNext(v);
           }
         });
       }
-    }).filter(new Func1<View, Boolean>() {
-      @Override public Boolean call(View view) {
+    }).filter(new Predicate<View>() {
+      @Override public boolean test(View view) {
         return cancelAndDismissTaken;
       }
-    }).map(new Func1<View, ObjectAnimator>() {
-      @Override public ObjectAnimator call(View view) {
+    }).map(new Function<View, ObjectAnimator>() {
+      @Override public ObjectAnimator apply(View view) {
         ObjectAnimator alphaAnimation = ObjectAnimator.ofFloat(frameLayout, "alpha", 1f, 0f);
         alphaAnimation.setDuration(300);
 
         return alphaAnimation;
       }
-    }).flatMap(new Func1<ObjectAnimator, Observable<?>>() {
-      @Override public Observable<?> call(ObjectAnimator objectAnimator) {
+    }).flatMap(new Function<ObjectAnimator, Observable<?>>() {
+      @Override public Observable<?> apply(ObjectAnimator objectAnimator) {
 
         objectAnimator.start();
 
         return Observable.just(1)
             .delay(300, TimeUnit.MILLISECONDS)
-            .observeOn(AndroidSchedulers.mainThread());
+            .observeOn(mainThread());
       }
-    }).doOnNext(new Action1<Object>() {
-      @Override public void call(Object o) {
+    }).doOnNext(new Consumer<Object>() {
+      @Override public void accept(Object o) {
 
         FlickableDialogListener.OnCanceled canceledListener = flickableDialogListeners.getOnFlickableDialogCanceledListener();
         if(canceledListener != null){
           canceledListener.onFlickableDialogCanceled();
         }
       }
-    }).subscribe(new Subscriber<Object>() {
-      @Override public void onCompleted() {
-
-      }
-
-      @Override public void onError(Throwable e) {
-
-      }
-
-      @Override public void onNext(Object o) {
+    }).subscribe(new Consumer<Object>() {
+      @Override public void accept(Object o) {
         dismiss();
       }
     }));
 
-    compositeSubscription.add(
-        Observable.create(new Observable.OnSubscribe<Pair<View, MotionEvent>>() {
-          @Override public void call(final Subscriber<? super Pair<View, MotionEvent>> subscriber) {
+    compositeSubscription.add(Observable.create(new ObservableOnSubscribe<Pair<View, MotionEvent>>() {
+        @Override public void subscribe(final ObservableEmitter<Pair<View, MotionEvent>> subscriber) {
             // create touch event observable
 
             final ViewGroup dialogView = (ViewGroup) LayoutInflater.from(getActivity())
@@ -201,8 +200,8 @@ public class FlickableDialog extends DialogFragment {
               }
             });
           }
-        }).doOnNext(new Action1<Pair<View, MotionEvent>>() {
-          @Override public void call(Pair<View, MotionEvent> viewMotionEventPair) {
+        }).doOnNext(new Consumer<Pair<View, MotionEvent>>() {
+          @Override public void accept(Pair<View, MotionEvent> viewMotionEventPair) {
             // memorize default content position as member variables
             if (defaultLeft == null || defaultTop == null) {
               // the first initial position
@@ -210,9 +209,9 @@ public class FlickableDialog extends DialogFragment {
               defaultTop = viewMotionEventPair.first.getTop();
             }
           }
-        }).doOnNext(new Action1<Pair<View, MotionEvent>>() {
+        }).doOnNext(new Consumer<Pair<View, MotionEvent>>() {
 
-          @Override public void call(Pair<View, MotionEvent> viewMotionEventPair) {
+          @Override public void accept(Pair<View, MotionEvent> viewMotionEventPair) {
             // memorize touched down position as member variables
             final View rootView = viewMotionEventPair.first;
             final MotionEvent event = viewMotionEventPair.second;
@@ -230,21 +229,21 @@ public class FlickableDialog extends DialogFragment {
               touchedTopArea = eventRawY < verticalCenter;
             }
           }
-        }).flatMap(new Func1<Pair<View, MotionEvent>, Observable<Pair<View, MotionEvent>>>() {
+        }).flatMap(new Function<Pair<View, MotionEvent>, Observable<Pair<View, MotionEvent>>>() {
           // move view with finger and rotate view as touched down position
-          @Override public Observable<Pair<View, MotionEvent>> call(
+          @Override public Observable<Pair<View, MotionEvent>> apply(
               final Pair<View, MotionEvent> viewMotionEventPair) {
 
             return Observable.zip(Observable.just(viewMotionEventPair)
-                .map(new Func1<Pair<View, MotionEvent>, Float>() {
-                  @Override public Float call(Pair<View, MotionEvent> viewMotionEventPair) {
+                .map(new Function<Pair<View, MotionEvent>, Float>() {
+                  @Override public Float apply(Pair<View, MotionEvent> viewMotionEventPair) {
 
                     return (float) (viewMotionEventPair.first.getLeft() - defaultLeft);
                   }
                 }), Observable.just(viewMotionEventPair)
-                .map(new Func1<Pair<View, MotionEvent>, Pair<Integer, Integer>>() {
+                .map(new Function<Pair<View, MotionEvent>, Pair<Integer, Integer>>() {
                   @Override
-                  public Pair<Integer, Integer> call(Pair<View, MotionEvent> viewMotionEventPair) {
+                  public Pair<Integer, Integer> apply(Pair<View, MotionEvent> viewMotionEventPair) {
 
                     int currentX = (int) viewMotionEventPair.second.getRawX();
                     int currentY = (int) viewMotionEventPair.second.getRawY();
@@ -254,8 +253,8 @@ public class FlickableDialog extends DialogFragment {
 
                     return Pair.create(left, top);
                   }
-                }), new Func2<Float, Pair<Integer, Integer>, Pair<View, MotionEvent>>() {
-              @Override public Pair<View, MotionEvent> call(Float verticalGap,
+                }), new BiFunction<Float, Pair<Integer,Integer>, Pair<View,MotionEvent>>() {
+              @Override public Pair<View, MotionEvent> apply(Float verticalGap,
                   Pair<Integer, Integer> leftTopPair) {
                 if (viewMotionEventPair.second.getAction() == MotionEvent.ACTION_MOVE) {
                   // rotation
@@ -275,8 +274,8 @@ public class FlickableDialog extends DialogFragment {
               }
             });
           }
-        }).doOnNext(new Action1<Pair<View, MotionEvent>>() {
-          @Override public void call(Pair<View, MotionEvent> pair) {
+        }).doOnNext(new Consumer<Pair<View, MotionEvent>>() {
+          @Override public void accept(Pair<View, MotionEvent> pair) {
             // memorize previous position as member variables
 
             final MotionEvent event = pair.second;
@@ -284,61 +283,61 @@ public class FlickableDialog extends DialogFragment {
             previousX = (int) event.getRawX();
             previousY = (int) event.getRawY();
           }
-        }).flatMap(new Func1<Pair<View, MotionEvent>, Observable<Pair<View, MotionEvent>>>() {
+        }).flatMap(new Function<Pair<View, MotionEvent>, Observable<Pair<View, MotionEvent>>>() {
           @Override
-          public Observable<Pair<View, MotionEvent>> call(final Pair<View, MotionEvent> pair) {
+          public Observable<Pair<View, MotionEvent>> apply(final Pair<View, MotionEvent> pair) {
 
-            return Observable.just(pair).map(new Func1<Pair<View, MotionEvent>, View>() {
-              @Override public View call(Pair<View, MotionEvent> pair) {
+            return Observable.just(pair).map(new Function<Pair<View, MotionEvent>, View>() {
+              @Override public View apply(Pair<View, MotionEvent> pair) {
                 return pair.first;
               }
-            }).map(new Func1<View, Pair<Integer, Integer>>() {
+            }).map(new Function<View, Pair<Integer, Integer>>() {
               // convert to delta amounts between origin and current position
-              @Override public Pair<Integer, Integer> call(View rootView) {
+              @Override public Pair<Integer, Integer> apply(View rootView) {
 
                 int deltaX = defaultLeft - rootView.getLeft();
                 int deltaY = defaultTop - rootView.getTop();
 
                 return Pair.create(deltaX, deltaY);
               }
-            }).doOnNext(new Action1<Pair<Integer, Integer>>() {
+            }).doOnNext(new Consumer<Pair<Integer, Integer>>() {
               // call back moved delta amount
-              @Override public void call(Pair<Integer, Integer> deltaXYPair) {
+              @Override public void accept(Pair<Integer, Integer> deltaXYPair) {
                 float percentageX = deltaXYPair.first / DISMISS_THRESHOLD;
                 float percentageY = deltaXYPair.second / DISMISS_THRESHOLD;
                 onFlicking(-percentageX, percentageY);
               }
-            }).map(new Func1<Pair<Integer, Integer>, Pair<View, MotionEvent>>() {
+            }).map(new Function<Pair<Integer, Integer>, Pair<View, MotionEvent>>() {
               @Override
-              public Pair<View, MotionEvent> call(Pair<Integer, Integer> integerIntegerPair) {
+              public Pair<View, MotionEvent> apply(Pair<Integer, Integer> integerIntegerPair) {
                 return pair;
               }
             });
           }
-        }).filter(new Func1<Pair<View, MotionEvent>, Boolean>() {
-          @Override public Boolean call(Pair<View, MotionEvent> pair) {
+        }).filter(new Predicate<Pair<View, MotionEvent>>() {
+          @Override public boolean test(Pair<View, MotionEvent> pair) {
             return pair.second.getAction() == MotionEvent.ACTION_UP;
           }
-        }).flatMap(new Func1<Pair<View, MotionEvent>, Observable<Pair<View, MotionEvent>>>() {
+        }).flatMap(new Function<Pair<View, MotionEvent>, Observable<Pair<View, MotionEvent>>>() {
           // check delta amounts
-          @Override public Observable<Pair<View, MotionEvent>> call(
+          @Override public Observable<Pair<View, MotionEvent>> apply(
               final Pair<View, MotionEvent> pair) {
 
-            return Observable.just(pair).map(new Func1<Pair<View, MotionEvent>, View>() {
-              @Override public View call(Pair<View, MotionEvent> pair) {
+            return Observable.just(pair).map(new Function<Pair<View, MotionEvent>, View>() {
+              @Override public View apply(Pair<View, MotionEvent> pair) {
                 return pair.first;
               }
-            }).map(new Func1<View, Pair<Integer, Integer>>() {
+            }).map(new Function<View, Pair<Integer, Integer>>() {
               // convert to delta amounts between origin and current position
-              @Override public Pair<Integer, Integer> call(View rootView) {
+              @Override public Pair<Integer, Integer> apply(View rootView) {
 
                 int deltaX = defaultLeft - rootView.getLeft();
                 int deltaY = defaultTop - rootView.getTop();
 
                 return Pair.create(deltaX, deltaY);
               }
-            }).flatMap(new Func1<Pair<Integer, Integer>, Observable<Pair<View, MotionEvent>>>() {
-              @Override public Observable<Pair<View, MotionEvent>> call(
+            }).flatMap(new Function<Pair<Integer, Integer>, Observable<Pair<View, MotionEvent>>>() {
+              @Override public Observable<Pair<View, MotionEvent>> apply(
                   final Pair<Integer, Integer> deltaXYPair) {
                 // judge if flicking amount is over dismiss threshold
                 if (Math.abs(deltaXYPair.first) > DISMISS_THRESHOLD
@@ -346,8 +345,8 @@ public class FlickableDialog extends DialogFragment {
                   // flicking amount is over threshold
                   // -> streams go below to animate throwing
                   return Observable.just(deltaXYPair)
-                      .map(new Func1<Pair<Integer, Integer>, Pair<View, MotionEvent>>() {
-                        @Override public Pair<View, MotionEvent> call(
+                      .map(new Function<Pair<Integer, Integer>, Pair<View, MotionEvent>>() {
+                        @Override public Pair<View, MotionEvent> apply(
                             Pair<Integer, Integer> integerIntegerPair) {
                           return pair;
                         }
@@ -358,8 +357,8 @@ public class FlickableDialog extends DialogFragment {
                   final int originBackAnimationDuration = 300;
 
                   return Observable.just(deltaXYPair)
-                      .doOnNext(new Action1<Pair<Integer, Integer>>() {
-                        @Override public void call(Pair<Integer, Integer> deltaXYPair) {
+                      .doOnNext(new Consumer<Pair<Integer, Integer>>() {
+                        @Override public void accept(Pair<Integer, Integer> deltaXYPair) {
 
                           PropertyValuesHolder horizontalAnimation =
                               PropertyValuesHolder.ofFloat("translationX", deltaXYPair.first);
@@ -380,21 +379,21 @@ public class FlickableDialog extends DialogFragment {
                           originBackAnimation.start();
                         }
                       })
-                      .flatMap(new Func1<Pair<Integer, Integer>, Observable<?>>() {
+                      .flatMap(new Function<Pair<Integer, Integer>, Observable<?>>() {
                         @Override
-                        public Observable<?> call(Pair<Integer, Integer> integerIntegerPair) {
+                        public Observable<?> apply(Pair<Integer, Integer> integerIntegerPair) {
                           return Observable.just(1)
                               .delay(originBackAnimationDuration, TimeUnit.MILLISECONDS)
-                              .observeOn(AndroidSchedulers.mainThread());
+                              .observeOn(mainThread());
                         }
                       })
-                      .doOnNext(new Action1<Object>() {
-                        @Override public void call(Object o) {
+                      .doOnNext(new Consumer<Object>() {
+                        @Override public void accept(Object o) {
                           onOriginBack();
                         }
                       })
-                      .flatMap(new Func1<Object, Observable<Pair<View, MotionEvent>>>() {
-                        @Override public Observable<Pair<View, MotionEvent>> call(Object o) {
+                      .flatMap(new Function<Object, Observable<Pair<View, MotionEvent>>>() {
+                        @Override public Observable<Pair<View, MotionEvent>> apply(Object o) {
                           return Observable.empty();
                         }
                       });
@@ -402,27 +401,27 @@ public class FlickableDialog extends DialogFragment {
               }
             });
           }
-        }).flatMap(new Func1<Pair<View, MotionEvent>, Observable<Pair<View, MotionEvent>>>() {
+        }).flatMap(new Function<Pair<View, MotionEvent>, Observable<Pair<View, MotionEvent>>>() {
           @Override
-          public Observable<Pair<View, MotionEvent>> call(final Pair<View, MotionEvent> pair) {
+          public Observable<Pair<View, MotionEvent>> apply(final Pair<View, MotionEvent> pair) {
             // create and start throwing animation
-            return Observable.just(pair.first).map(new Func1<View, Pair<Integer, Integer>>() {
+            return Observable.just(pair.first).map(new Function<View, Pair<Integer, Integer>>() {
               // convert to delta amounts between origin and current position
-              @Override public Pair<Integer, Integer> call(View rootView) {
+              @Override public Pair<Integer, Integer> apply(View rootView) {
 
                 int deltaX = defaultLeft - rootView.getLeft();
                 int deltaY = defaultTop - rootView.getTop();
 
                 return Pair.create(deltaX, deltaY);
               }
-            }).flatMap(new Func1<Pair<Integer, Integer>, Observable<Pair<View, MotionEvent>>>() {
-              @Override public Observable<Pair<View, MotionEvent>> call(
+            }).flatMap(new Function<Pair<Integer, Integer>, Observable<Pair<View, MotionEvent>>>() {
+              @Override public Observable<Pair<View, MotionEvent>> apply(
                   Pair<Integer, Integer> integerIntegerPair) {
                 // make and start throwing animation
                 return Observable.zip(Observable.just(integerIntegerPair)
-                        .map(new Func1<Pair<Integer, Integer>, PropertyValuesHolder>() {
+                        .map(new Function<Pair<Integer, Integer>, PropertyValuesHolder>() {
                           @Override
-                          public PropertyValuesHolder call(Pair<Integer, Integer> deltaXYPair) {
+                          public PropertyValuesHolder apply(Pair<Integer, Integer> deltaXYPair) {
                             // make rotate animation
                             float rotation;
                             if (touchedTopArea) {
@@ -437,8 +436,8 @@ public class FlickableDialog extends DialogFragment {
                           }
                         }), Observable.just(integerIntegerPair)
                         .map(
-                            new Func1<Pair<Integer, Integer>, Pair<PropertyValuesHolder, PropertyValuesHolder>>() {
-                              @Override public Pair<PropertyValuesHolder, PropertyValuesHolder> call(
+                            new Function<Pair<Integer, Integer>, Pair<PropertyValuesHolder, PropertyValuesHolder>>() {
+                              @Override public Pair<PropertyValuesHolder, PropertyValuesHolder> apply(
                                   Pair<Integer, Integer> deltaXYPair) {
                                 // make position transit animation
                                 PropertyValuesHolder horizontalAnimation =
@@ -452,9 +451,9 @@ public class FlickableDialog extends DialogFragment {
                                 return Pair.create(horizontalAnimation, verticalAnimation);
                               }
                             }), Observable.just(integerIntegerPair)
-                        .map(new Func1<Pair<Integer, Integer>, ObjectAnimator>() {
+                        .map(new Function<Pair<Integer, Integer>, ObjectAnimator>() {
                           @Override
-                          public ObjectAnimator call(Pair<Integer, Integer> integerIntegerPair) {
+                          public ObjectAnimator apply(Pair<Integer, Integer> integerIntegerPair) {
                             // make background alpha transit animation
                             ObjectAnimator alphaAnimation =
                                 ObjectAnimator.ofFloat(pair.first.getRootView(), "alpha", 1f, 0f);
@@ -463,9 +462,9 @@ public class FlickableDialog extends DialogFragment {
                             return alphaAnimation;
                           }
                         }),
-                    new Func3<PropertyValuesHolder, Pair<PropertyValuesHolder, PropertyValuesHolder>, ObjectAnimator, Pair<View, MotionEvent>>() {
+                    new Function3<PropertyValuesHolder, Pair<PropertyValuesHolder, PropertyValuesHolder>, ObjectAnimator, Pair<View, MotionEvent>>() {
                       @Override
-                      public Pair<View, MotionEvent> call(PropertyValuesHolder propertyValuesHolder,
+                      public Pair<View, MotionEvent> apply(PropertyValuesHolder propertyValuesHolder,
                           Pair<PropertyValuesHolder, PropertyValuesHolder> propertyValuesHolderPropertyValuesHolderPair,
                           ObjectAnimator alphaAnimation) {
                         // zip and do animation
@@ -488,23 +487,23 @@ public class FlickableDialog extends DialogFragment {
               }
             });
           }
-        }).flatMap(new Func1<Pair<View, MotionEvent>, Observable<Pair<View, MotionEvent>>>() {
+        }).flatMap(new Function<Pair<View, MotionEvent>, Observable<Pair<View, MotionEvent>>>() {
           // waiting animation end
-          @Override public Observable<Pair<View, MotionEvent>> call(
+          @Override public Observable<Pair<View, MotionEvent>> apply(
               Pair<View, MotionEvent> viewMotionEventPair) {
 
             return Observable.just(viewMotionEventPair)
                 .delay(400, TimeUnit.MILLISECONDS)
-                .observeOn(AndroidSchedulers.mainThread());
+                .observeOn(mainThread());
           }
-        }).flatMap(new Func1<Pair<View, MotionEvent>, Observable<Pair<View, MotionEvent>>>() {
-          @Override public Observable<Pair<View, MotionEvent>> call(
+        }).flatMap(new Function<Pair<View, MotionEvent>, Observable<Pair<View, MotionEvent>>>() {
+          @Override public Observable<Pair<View, MotionEvent>> apply(
               final Pair<View, MotionEvent> viewMotionEventPair) {
 
             return Observable.just(viewMotionEventPair.first)
-                .map(new Func1<View, Pair<Integer, Integer>>() {
+                .map(new Function<View, Pair<Integer, Integer>>() {
                   // convert to delta amounts between origin and current position
-                  @Override public Pair<Integer, Integer> call(View rootView) {
+                  @Override public Pair<Integer, Integer> apply(View rootView) {
 
                     int deltaX = defaultLeft - rootView.getLeft();
                     int deltaY = defaultTop - rootView.getTop();
@@ -512,9 +511,9 @@ public class FlickableDialog extends DialogFragment {
                     return Pair.create(deltaX, deltaY);
                   }
                 })
-                .doOnNext(new Action1<Pair<Integer, Integer>>() {
+                .doOnNext(new Consumer<Pair<Integer, Integer>>() {
                   // call back X direction
-                  @Override public void call(Pair<Integer, Integer> integerIntegerPair) {
+                  @Override public void accept(Pair<Integer, Integer> integerIntegerPair) {
                     FlickableDialogListener.OnFlickedXDirection onFlickedXDirectionListener =
                         flickableDialogListeners.getOnFlickedXDirectionListener();
                     if (onFlickedXDirectionListener != null) {
@@ -538,22 +537,22 @@ public class FlickableDialog extends DialogFragment {
                     }
                   }
                 })
-                .map(new Func1<Pair<Integer, Integer>, Pair<View, MotionEvent>>() {
+                .map(new Function<Pair<Integer, Integer>, Pair<View, MotionEvent>>() {
                   @Override
-                  public Pair<View, MotionEvent> call(Pair<Integer, Integer> integerIntegerPair) {
+                  public Pair<View, MotionEvent> apply(Pair<Integer, Integer> integerIntegerPair) {
                     return viewMotionEventPair;
                   }
                 });
           }
-        }).doOnSubscribe(new Action0() {
-          @Override public void call() {
+        }).doOnSubscribe(new Consumer<Disposable>() {
+          @Override public void accept(Disposable disposable) {
 
             ObjectAnimator alphaAnimation = ObjectAnimator.ofFloat(frameLayout, "alpha", 0f, 1f);
             alphaAnimation.setDuration(200);
             alphaAnimation.start();
           }
-        }).subscribe(new Action1<Pair<View, MotionEvent>>() {
-          @Override public void call(Pair<View, MotionEvent> view) {
+        }).subscribe(new Consumer<Pair<View, MotionEvent>>() {
+          @Override public void accept(Pair<View, MotionEvent> view) {
             dismiss();
           }
         }));
@@ -585,7 +584,7 @@ public class FlickableDialog extends DialogFragment {
 
   @Override public void onDetach() {
 
-    compositeSubscription.unsubscribe();
+    compositeSubscription.dispose();
 
     flickableDialogListeners.destroyListeners();
 
@@ -594,7 +593,7 @@ public class FlickableDialog extends DialogFragment {
 
   @Override public void onDismiss(DialogInterface dialogInterface) {
 
-    compositeSubscription.unsubscribe();
+    compositeSubscription.dispose();
 
     flickableDialogListeners.destroyListeners();
 
