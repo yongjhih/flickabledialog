@@ -196,7 +196,7 @@ public class FlickableDialog extends DialogFragment {
               }
             });
 
-            onCreateView.onCreateView(dialogView);
+            if (onCreateView != null) onCreateView.onCreateView(dialogView);
           }
         }).doOnNext(new Consumer<Pair<View, MotionEvent>>() {
           @Override public void accept(Pair<View, MotionEvent> viewMotionEventPair) {
