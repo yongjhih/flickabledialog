@@ -109,6 +109,16 @@ public class FlickableDialog extends DialogFragment {
    */
   public void onOriginBack() {}
 
+  public interface OnCreateView {
+    void onCreateView(View view);
+  }
+
+  private OnCreateView onCreateView;
+
+  public void onCreateView(OnCreateView onCreateView) {
+    this.onCreateView = onCreateView;
+  }
+
   @NonNull @Override public Dialog onCreateDialog(Bundle savedInstanceState) {
     super.onCreateDialog(savedInstanceState);
 
@@ -183,6 +193,8 @@ public class FlickableDialog extends DialogFragment {
                 return true;
               }
             });
+
+            onCreateView.onCreateView(dialogView);
           }
         }).doOnNext(new Consumer<Pair<View, MotionEvent>>() {
           @Override public void accept(Pair<View, MotionEvent> viewMotionEventPair) {
